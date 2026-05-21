@@ -115,7 +115,7 @@ jobs:
             -backend-config="key=${STATE_KEY}"
 
       - name: Terraform Plan (destroy)
-        run: terraform plan -destroy -no-color -out=tfdestroy
+        run: terraform plan -destroy -out=tfdestroy
 
       - name: Terraform Apply (destroy)
-        run: terraform apply -no-color -auto-approve tfdestroy
+        run: terraform apply -auto-approve tfdestroy

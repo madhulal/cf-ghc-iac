@@ -102,10 +102,10 @@ jobs:
             -backend-config="key=${STATE_KEY}"
 
       - name: Terraform Validate
-        run: terraform validate -no-color
+        run: terraform validate
 
       - name: Terraform Plan
-        run: terraform plan -no-color -out=tfplan
+        run: terraform plan -out=tfplan
 
       - name: Terraform Apply
-        run: terraform apply -no-color -auto-approve tfplan
+        run: terraform apply -auto-approve tfplan

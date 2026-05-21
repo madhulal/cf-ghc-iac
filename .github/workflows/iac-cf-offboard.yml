@@ -12,8 +12,8 @@ on:
           - qa
           - prod
       client_write_token:
-        description: 'PAT with Write/Admin access to this client repository'
-        required: true
+        description: 'PAT with Write/Admin access to this client repository. Leave blank to use the pre-stored GH_CLIENT_WRITE_TOKEN repository secret.'
+        required: false
         type: string
       delete_environment:
         description: 'Also delete the GitHub Environment itself'
@@ -41,10 +41,14 @@ jobs:
 
       - name: Run offboarding script
         env:
-          GH_TOKEN: ${{ github.event.inputs.client_write_token }}
+          GH_TOKEN: ${{ github.event.inputs.client_write_token || secrets.GH_CLIENT_WRITE_TOKEN }}
           REPO: ${{ github.repository }}
           ENV_NAME: ${{ github.event.inputs.environment }}
           DELETE_ENV: ${{ github.event.inputs.delete_environment }}
         run: |
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "❌ client_write_token is required: provide it as a dispatch input or pre-store it as the GH_CLIENT_WRITE_TOKEN repository secret"
+            exit 1
+          fi
           chmod +x infra/iac/cloudflare/scripts/offboard-client.sh
           infra/iac/cloudflare/scripts/offboard-client.sh
