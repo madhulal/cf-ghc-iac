@@ -1,0 +1,121 @@
+name: IAC Cloudflare Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to run IaC
+        required: true
+        type: choice
+        options:
+          - dev
+          - qa
+          - prod
+      confirmation:
+        description: Type destroy to confirm (irreversible)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  terraform-destroy:
+    name: Destroy
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    defaults:
+      run:
+        # update working directory to the IAC
+        working-directory: infra/iac/cloudflare/environments/common
+
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_STATE_PROJECT: ${{ vars.TF_STATE_PROJECT }}
+      TF_STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+      TF_STATE_RESOURCE_GROUP: ${{ vars.TF_STATE_RESOURCE_GROUP }}
+      TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
+      TF_STATE_SAS_TOKEN: ${{ secrets.TF_STATE_SAS_TOKEN }}
+      TF_VAR_cloudflare_api_token: ${{ secrets.CF_API_TOKEN }}
+      TF_VAR_cloudflare_account_id: ${{ vars.CF_ACCOUNT_ID }}
+      TF_VAR_worker_name: ${{ vars.CF_WORKER_NAME }}
+      TF_VAR_r2_bucket_name: ${{ vars.CF_R2_BUCKET_NAME }}
+      TF_VAR_worker_compatibility_date: ${{ vars.CF_WORKER_COMPATIBILITY_DATE }}
+      TF_VAR_pages_web_cms_name: ${{ vars.CF_PAGES_WEB_CMS_NAME }}
+      TF_VAR_cloudflare_worker_custom_domains: ${{ vars.CF_WORKER_CUSTOM_DOMAINS || '[]' }}
+      TF_VAR_cloudflare_pages_custom_domain: ${{ vars.CF_PAGES_CUSTOM_DOMAINS || 'null' }}
+      TF_VAR_cloudflare_r2_bucket_location: ${{ vars.CF_R2_BUCKET_LOCATION }}
+      TF_VAR_pages_web_cms_production_branch: ${{ vars.CF_PAGES_PROD_BRANCH }}
+      TF_VAR_manage_zone_resources: ${{ vars.CF_MANAGE_ZONE_RESOURCES || 'true' }}
+      TF_VAR_security_contact: ${{ vars.CF_SECURITY_CONTACT || '' }}
+      TF_VAR_dmarc_policy: ${{ vars.CF_DMARC_POLICY || 'reject' }}
+      TF_VAR_dmarc_rua: ${{ vars.CF_DMARC_RUA || '' }}
+
+    steps:
+      # Job default `working-directory` is under `infra/...`, which does not exist until the IaC checkout runs.
+      - name: Confirm destroy
+        working-directory: .
+        run: |
+          if [[ "${{ github.event.inputs.confirmation }}" != "destroy" ]]; then
+            echo "Mismatch: confirmation must be the exact word destroy."
+            exit 1
+          fi
+
+      - name: Checkout pipeline repo
+        uses: actions/checkout@v6
+
+      - name: Checkout IaC repo
+        uses: actions/checkout@v6
+        with:
+          # update repository name to the IAC repo name
+          repository: valoriz/streakjs-common-infra
+          ref: main
+          # create a personal access token for the IAC repo
+          token: ${{ secrets.GH_MASTER_REPO_ACCESS_TOKEN }}
+          path: infra
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+
+      - name: Validate required configuration
+        run: |
+          required_vars=(
+            TF_STATE_PROJECT
+            TF_STATE_STORAGE_ACCOUNT
+            TF_STATE_RESOURCE_GROUP
+            TF_STATE_CONTAINER
+            TF_STATE_SAS_TOKEN
+            TF_VAR_cloudflare_api_token
+            TF_VAR_cloudflare_account_id
+          )
+
+          missing=()
+          for v in "${required_vars[@]}"; do
+            [[ -n "${!v:-}" ]] || missing+=("${v}")
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required environment secrets or variables:"
+            printf ' - %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+      - name: Terraform Init (dynamic backend)
+        run: |
+          STATE_KEY="streakjs-clients/${TF_STATE_PROJECT}/${{ github.event.inputs.environment }}.terraform.tfstate"
+          SAS_TOKEN="${TF_STATE_SAS_TOKEN#\?}"
+
+          terraform init -reconfigure \
+            -backend-config="resource_group_name=${TF_STATE_RESOURCE_GROUP}" \
+            -backend-config="storage_account_name=${TF_STATE_STORAGE_ACCOUNT}" \
+            -backend-config="container_name=${TF_STATE_CONTAINER}" \
+            -backend-config="sas_token=${SAS_TOKEN}" \
+            -backend-config="key=${STATE_KEY}"
+
+      - name: Terraform Plan (destroy)
+        run: terraform plan -destroy -no-color -out=tfdestroy
+
+      - name: Terraform Apply (destroy)
+        run: terraform apply -no-color -auto-approve tfdestroy

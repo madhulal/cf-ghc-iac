@@ -1,0 +1,50 @@
+name: IAC Offboard Repo
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to offboard (e.g. dev, qa, prod)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - qa
+          - prod
+      client_write_token:
+        description: 'PAT with Write/Admin access to this client repository'
+        required: true
+        type: string
+      delete_environment:
+        description: 'Also delete the GitHub Environment itself'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  offboard:
+    name: Remove Environment Variables and Secrets
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout IaC repo
+        uses: actions/checkout@v6
+        with:
+          repository: valoriz/streakjs-common-infra
+          ref: main
+          token: ${{ secrets.GH_MASTER_REPO_ACCESS_TOKEN }}
+          path: infra
+
+      - name: Run offboarding script
+        env:
+          GH_TOKEN: ${{ github.event.inputs.client_write_token }}
+          REPO: ${{ github.repository }}
+          ENV_NAME: ${{ github.event.inputs.environment }}
+          DELETE_ENV: ${{ github.event.inputs.delete_environment }}
+        run: |
+          chmod +x infra/iac/cloudflare/scripts/offboard-client.sh
+          infra/iac/cloudflare/scripts/offboard-client.sh
