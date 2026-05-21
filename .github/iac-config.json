@@ -30,7 +30,11 @@
         }
       ],
       "cf_pages_name": "cms-streakjs-qa",
-      "cf_pages_prod_branch": "qa"
+      "cf_pages_prod_branch": "qa",
+      "cf_pages_custom_domain": {
+        "hostname": "cms-qa.soukhyaayurvedic.com",
+        "zone_id": "fae2a47c0381221606e9d792aa21de03"
+      }
     },
     "prod": {
       "cf_worker_name": "web-streakjs",
