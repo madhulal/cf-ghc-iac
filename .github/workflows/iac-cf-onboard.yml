@@ -52,13 +52,17 @@ jobs:
           INPUT_MASTER_REPO_TOKEN:     ${{ github.event.inputs.gh_master_repo_access_token }}
           SECRET_MASTER_REPO_TOKEN:    ${{ secrets.GH_MASTER_REPO_ACCESS_TOKEN }}
         run: |
+          # Resolves a token: input takes precedence over pre-stored secret.
+          # Prints the resolved value and sets <VAR>_FROM_INPUT=true/false in GITHUB_ENV
           resolve() {
-            local name="$1" input="$2" secret="$3"
+            local name="$1" input="$2" secret="$3" env_flag="$4"
             if [[ -n "$input" ]]; then
-              echo "  ✓ $name — using dispatch input"
+              echo "  ✓ $name — using dispatch input (will update stored secret)" >&2
+              echo "$env_flag=true" >> "$GITHUB_ENV"
               echo "$input"
             elif [[ -n "$secret" ]]; then
-              echo "  ✓ $name — using pre-stored repository secret" >&2
+              echo "  ✓ $name — using pre-stored repository secret (will not update)" >&2
+              echo "$env_flag=false" >> "$GITHUB_ENV"
               echo "$secret"
             else
               echo "❌ $name is required: provide it as a dispatch input or pre-store it as a repository secret" >&2
@@ -66,9 +70,9 @@ jobs:
             fi
           }
 
-          CLIENT_WRITE_TOKEN=$(resolve "gh_client_write_token" "$INPUT_CLIENT_WRITE_TOKEN" "$SECRET_CLIENT_WRITE_TOKEN")
-          CF_API_TOKEN=$(resolve "cf_api_token"               "$INPUT_CF_API_TOKEN"       "$SECRET_CF_API_TOKEN")
-          MASTER_REPO_TOKEN=$(resolve "gh_master_repo_access_token" "$INPUT_MASTER_REPO_TOKEN" "$SECRET_MASTER_REPO_TOKEN")
+          CLIENT_WRITE_TOKEN=$(resolve "gh_client_write_token"       "$INPUT_CLIENT_WRITE_TOKEN" "$SECRET_CLIENT_WRITE_TOKEN" "GH_CLIENT_WRITE_TOKEN_FROM_INPUT")
+          CF_API_TOKEN=$(resolve       "cf_api_token"                "$INPUT_CF_API_TOKEN"       "$SECRET_CF_API_TOKEN"       "CF_API_TOKEN_FROM_INPUT")
+          MASTER_REPO_TOKEN=$(resolve  "gh_master_repo_access_token" "$INPUT_MASTER_REPO_TOKEN"  "$SECRET_MASTER_REPO_TOKEN"  "GH_MASTER_REPO_TOKEN_FROM_INPUT")
 
           echo "GH_CLIENT_WRITE_TOKEN_RESOLVED=$CLIENT_WRITE_TOKEN" >> "$GITHUB_ENV"
           echo "CF_API_TOKEN_RESOLVED=$CF_API_TOKEN"                >> "$GITHUB_ENV"
