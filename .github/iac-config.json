@@ -11,7 +11,7 @@
     "dev": {
       "cf_worker_name": "web-streakjs-dev",
       "cf_r2_bucket_name": "web-streakjs-deployments-dev-001",
-      "cf_manage_zone_resources": "true",
+      "cf_manage_zone_resources": "false",
       "cf_worker_custom_domains": [
         {
           "hostname": "dev.soukhyaayurvedic.com",
@@ -22,7 +22,7 @@
     "qa": {
       "cf_worker_name": "web-streakjs-qa",
       "cf_r2_bucket_name": "web-streakjs-deployments-qa-001",
-      "cf_manage_zone_resources": "true",
+      "cf_manage_zone_resources": "false",
       "cf_worker_custom_domains": [
         {
           "hostname": "qa.soukhyaayurvedic.com",
