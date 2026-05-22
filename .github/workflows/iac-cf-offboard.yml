@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Generate token for IaC repo (read)
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         id: iac-token
         with:
           app-id: ${{ secrets.GH_APP_ID }}
@@ -37,7 +37,7 @@ jobs:
           repositories: streakjs-common-infra
 
       - name: Generate token for client repo (write)
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         id: client-token
         with:
           app-id: ${{ secrets.GH_APP_ID }}
