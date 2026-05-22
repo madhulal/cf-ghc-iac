@@ -1,4 +1,4 @@
-name: IaC: Cloudflare Create
+name: "IaC: Cloudflare Create"
 
 on:
   workflow_dispatch:

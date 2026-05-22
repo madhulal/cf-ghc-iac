@@ -1,4 +1,4 @@
-name: IaC: Onboard
+name: "IaC: Onboard"
 
 on:
   workflow_dispatch:

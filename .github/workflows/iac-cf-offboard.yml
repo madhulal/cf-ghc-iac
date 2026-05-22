@@ -1,4 +1,4 @@
-name: IaC: Offboard
+name: "IaC: Offboard"
 
 on:
   workflow_dispatch:
