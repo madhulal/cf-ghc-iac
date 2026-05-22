@@ -37,7 +37,7 @@ jobs:
         uses: actions/create-github-app-token@v3
         id: iac-token
         with:
-          client-id: ${{ secrets.GH_APP_CLIENT_ID }}
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           owner: valoriz
           repositories: streakjs-common-infra
@@ -46,7 +46,7 @@ jobs:
         uses: actions/create-github-app-token@v3
         id: client-token
         with:
-          client-id: ${{ secrets.GH_APP_CLIENT_ID }}
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
