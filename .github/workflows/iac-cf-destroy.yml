@@ -1,4 +1,4 @@
-name: IAC Cloudflare Destroy
+name: IaC: Cloudflare Destroy
 
 on:
   workflow_dispatch:

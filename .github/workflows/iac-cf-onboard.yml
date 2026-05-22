@@ -1,4 +1,4 @@
-name: IAC Onboard Repo
+name: IaC: Onboard
 
 on:
   workflow_dispatch:

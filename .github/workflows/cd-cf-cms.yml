@@ -1,4 +1,4 @@
-name: Sanity CMS Cloudflare Pages Deployment
+name: CD: CMS Deploy
 
 on:
   workflow_dispatch:

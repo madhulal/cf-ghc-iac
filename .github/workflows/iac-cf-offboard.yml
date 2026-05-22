@@ -1,4 +1,4 @@
-name: IAC Offboard Repo
+name: IaC: Offboard
 
 on:
   workflow_dispatch:
