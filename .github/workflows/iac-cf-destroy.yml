@@ -66,14 +66,21 @@ jobs:
       - name: Checkout pipeline repo
         uses: actions/checkout@v6
 
+      - name: Generate token for IaC repo (read)
+        uses: actions/create-github-app-token@v1
+        id: iac-token
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: valoriz
+          repositories: streakjs-common-infra
+
       - name: Checkout IaC repo
         uses: actions/checkout@v6
         with:
-          # update repository name to the IAC repo name
           repository: valoriz/streakjs-common-infra
           ref: main
-          # create a personal access token for the IAC repo
-          token: ${{ secrets.GH_MASTER_REPO_ACCESS_TOKEN }}
+          token: ${{ steps.iac-token.outputs.token }}
           path: infra
 
       - name: Setup Terraform

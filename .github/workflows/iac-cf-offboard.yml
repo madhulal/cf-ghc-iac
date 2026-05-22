@@ -11,10 +11,6 @@ on:
           - dev
           - qa
           - prod
-      client_write_token:
-        description: 'PAT with Write/Admin access to this client repository. Leave blank to use the pre-stored GH_CLIENT_WRITE_TOKEN repository secret.'
-        required: false
-        type: string
       delete_environment:
         description: 'Also delete the GitHub Environment itself'
         required: false
@@ -31,24 +27,38 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
 
     steps:
+      - name: Generate token for IaC repo (read)
+        uses: actions/create-github-app-token@v1
+        id: iac-token
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: valoriz
+          repositories: streakjs-common-infra
+
+      - name: Generate token for client repo (write)
+        uses: actions/create-github-app-token@v1
+        id: client-token
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
       - name: Checkout IaC repo
         uses: actions/checkout@v6
         with:
           repository: valoriz/streakjs-common-infra
           ref: main
-          token: ${{ secrets.GH_MASTER_REPO_ACCESS_TOKEN }}
+          token: ${{ steps.iac-token.outputs.token }}
           path: infra
 
       - name: Run offboarding script
         env:
-          GH_TOKEN: ${{ github.event.inputs.client_write_token || secrets.GH_CLIENT_WRITE_TOKEN }}
+          GH_TOKEN: ${{ steps.client-token.outputs.token }}
           REPO: ${{ github.repository }}
           ENV_NAME: ${{ github.event.inputs.environment }}
           DELETE_ENV: ${{ github.event.inputs.delete_environment }}
         run: |
-          if [[ -z "${GH_TOKEN}" ]]; then
-            echo "❌ client_write_token is required: provide it as a dispatch input or pre-store it as the GH_CLIENT_WRITE_TOKEN repository secret"
-            exit 1
-          fi
           chmod +x infra/iac/cloudflare/scripts/offboard-client.sh
           infra/iac/cloudflare/scripts/offboard-client.sh

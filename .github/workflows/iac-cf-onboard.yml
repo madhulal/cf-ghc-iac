@@ -11,16 +11,8 @@ on:
           - dev
           - qa
           - prod
-      gh_client_write_token:
-        description: 'PAT with Write/Admin access to this client repository. Leave blank to use the pre-stored GH_CLIENT_WRITE_TOKEN repository secret.'
-        required: false
-        type: string
       cf_api_token:
         description: 'Cloudflare API Token for this client. Leave blank to use the pre-stored CF_API_TOKEN repository secret.'
-        required: false
-        type: string
-      gh_master_repo_access_token:
-        description: 'PAT with Read access to the streakjs-common-infra repository. Leave blank to use the pre-stored GH_MASTER_REPO_ACCESS_TOKEN repository secret.'
         required: false
         type: string
       config_file:
@@ -41,42 +33,37 @@ jobs:
       - name: Checkout client repo
         uses: actions/checkout@v6
 
-      - name: Resolve and validate tokens
-        # Dispatch inputs take precedence over pre-stored secrets.
-        # If neither is set, the step fails with a clear message.
+      - name: Generate token for IaC repo (read)
+        uses: actions/create-github-app-token@v1
+        id: iac-token
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: valoriz
+          repositories: streakjs-common-infra
+
+      - name: Generate token for client repo (write)
+        uses: actions/create-github-app-token@v1
+        id: client-token
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Resolve Cloudflare token
         env:
-          INPUT_CLIENT_WRITE_TOKEN:    ${{ github.event.inputs.gh_client_write_token }}
-          SECRET_CLIENT_WRITE_TOKEN:   ${{ secrets.GH_CLIENT_WRITE_TOKEN }}
-          INPUT_CF_API_TOKEN:          ${{ github.event.inputs.cf_api_token }}
-          SECRET_CF_API_TOKEN:         ${{ secrets.CF_API_TOKEN }}
-          INPUT_MASTER_REPO_TOKEN:     ${{ github.event.inputs.gh_master_repo_access_token }}
-          SECRET_MASTER_REPO_TOKEN:    ${{ secrets.GH_MASTER_REPO_ACCESS_TOKEN }}
+          INPUT_CF_API_TOKEN:  ${{ github.event.inputs.cf_api_token }}
+          SECRET_CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: |
-          # Resolves a token: input takes precedence over pre-stored secret.
-          # Prints the resolved value and sets <VAR>_FROM_INPUT=true/false in GITHUB_ENV
-          resolve() {
-            local name="$1" input="$2" secret="$3" env_flag="$4"
-            if [[ -n "$input" ]]; then
-              echo "  ✓ $name — using dispatch input (will update stored secret)" >&2
-              echo "$env_flag=true" >> "$GITHUB_ENV"
-              echo "$input"
-            elif [[ -n "$secret" ]]; then
-              echo "  ✓ $name — using pre-stored repository secret (will not update)" >&2
-              echo "$env_flag=false" >> "$GITHUB_ENV"
-              echo "$secret"
-            else
-              echo "❌ $name is required: provide it as a dispatch input or pre-store it as a repository secret" >&2
-              exit 1
-            fi
-          }
-
-          CLIENT_WRITE_TOKEN=$(resolve "gh_client_write_token"       "$INPUT_CLIENT_WRITE_TOKEN" "$SECRET_CLIENT_WRITE_TOKEN" "GH_CLIENT_WRITE_TOKEN_FROM_INPUT")
-          CF_API_TOKEN=$(resolve       "cf_api_token"                "$INPUT_CF_API_TOKEN"       "$SECRET_CF_API_TOKEN"       "CF_API_TOKEN_FROM_INPUT")
-          MASTER_REPO_TOKEN=$(resolve  "gh_master_repo_access_token" "$INPUT_MASTER_REPO_TOKEN"  "$SECRET_MASTER_REPO_TOKEN"  "GH_MASTER_REPO_TOKEN_FROM_INPUT")
-
-          echo "GH_CLIENT_WRITE_TOKEN_RESOLVED=$CLIENT_WRITE_TOKEN" >> "$GITHUB_ENV"
-          echo "CF_API_TOKEN_RESOLVED=$CF_API_TOKEN"                >> "$GITHUB_ENV"
-          echo "GH_MASTER_REPO_TOKEN_RESOLVED=$MASTER_REPO_TOKEN"  >> "$GITHUB_ENV"
+          if [[ -n "$INPUT_CF_API_TOKEN" ]]; then
+            echo "CF_API_TOKEN_RESOLVED=$INPUT_CF_API_TOKEN" >> "$GITHUB_ENV"
+          elif [[ -n "$SECRET_CF_API_TOKEN" ]]; then
+            echo "CF_API_TOKEN_RESOLVED=$SECRET_CF_API_TOKEN" >> "$GITHUB_ENV"
+          else
+            echo "❌ cf_api_token is required: provide it as a dispatch input or pre-store it as the CF_API_TOKEN repository secret"
+            exit 1
+          fi
 
       - name: Read IAC config file
         id: config
@@ -135,6 +122,7 @@ jobs:
           CF_SECURITY_CONTACT=$(echo "$CFG"         | jq -r '.cf_security_contact // ""')
           CF_DMARC_POLICY=$(echo "$CFG"             | jq -r '.cf_dmarc_policy // ""')
           CF_DMARC_RUA=$(echo "$CFG"                | jq -r '.cf_dmarc_rua // ""')
+          EXTRA_VARIABLES=$(echo "$CFG"             | jq -c '.extra_variables // null')
 
           {
             echo "PROJECT_NAME=$PROJECT_NAME"
@@ -151,6 +139,7 @@ jobs:
             echo "CF_SECURITY_CONTACT=$CF_SECURITY_CONTACT"
             echo "CF_DMARC_POLICY=$CF_DMARC_POLICY"
             echo "CF_DMARC_RUA=$CF_DMARC_RUA"
+            echo "EXTRA_VARIABLES=$EXTRA_VARIABLES"
           } >> "$GITHUB_ENV"
 
           echo "✅ Config loaded: project=$PROJECT_NAME env=$ENV_NAME"
@@ -160,17 +149,16 @@ jobs:
         with:
           repository: valoriz/streakjs-common-infra
           ref: main
-          token: ${{ env.GH_MASTER_REPO_TOKEN_RESOLVED }}
+          token: ${{ steps.iac-token.outputs.token }}
           path: infra
 
       - name: Run onboarding script
         env:
-          GH_TOKEN: ${{ env.GH_CLIENT_WRITE_TOKEN_RESOLVED }}
+          GH_TOKEN: ${{ steps.client-token.outputs.token }}
           REPO: ${{ github.repository }}
           ENV_NAME: ${{ github.event.inputs.environment }}
           CF_API_TOKEN: ${{ env.CF_API_TOKEN_RESOLVED }}
-          GH_MASTER_REPO_ACCESS_TOKEN: ${{ env.GH_MASTER_REPO_TOKEN_RESOLVED }}
-          # All remaining vars are populated from the config file via GITHUB_ENV
+          # All remaining vars (including EXTRA_VARIABLES) are populated from the config file via GITHUB_ENV
         run: |
           chmod +x infra/iac/cloudflare/scripts/onboard-client.sh
           infra/iac/cloudflare/scripts/onboard-client.sh

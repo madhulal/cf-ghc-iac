@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared values are defaults for all environments. Any field can be overridden per-environment inside environments.<env>. cf_account_id, cf_worker_custom_domains, and cf_manage_zone_resources are commonly overridden per-env when environments are on different Cloudflare accounts or domains.",
+  "_comment": "Shared values are defaults for all environments. Any field can be overridden per-environment inside environments.<env>. cf_account_id, cf_worker_custom_domains, and cf_manage_zone_resources are commonly overridden per-env when environments are on different Cloudflare accounts or domains. Use extra_variables (per-env) to set any project-specific GitHub Environment variables — they are version-controlled here and set automatically during onboarding. Secrets cannot be stored here; store them as repository secrets.",
   "project_name": "soukhya",
   "cf_account_id": "c11d8ac6c92da6aab9be18f4e4070b2c",
   "cf_r2_bucket_location": "APAC",
@@ -17,7 +17,10 @@
           "hostname": "dev.soukhyaayurvedic.com",
           "zone_id": "fae2a47c0381221606e9d792aa21de03"
         }
-      ]
+      ],
+      "extra_variables": {
+        "GH_EXTRA_ENV_KEY": "ghExtraEnvValue"
+      }
     },
     "qa": {
       "cf_worker_name": "web-streakjs-qa",
@@ -34,6 +37,9 @@
       "cf_pages_custom_domain": {
         "hostname": "cms-qa.soukhyaayurvedic.com",
         "zone_id": "fae2a47c0381221606e9d792aa21de03"
+      },
+      "extra_variables": {
+        "GH_EXTRA_ENV_KEY": "ghExtraEnvValue"
       }
     },
     "prod": {
@@ -51,6 +57,9 @@
       "cf_pages_custom_domain": {
         "hostname": "cms.soukhyaayurvedic.com",
         "zone_id": "fae2a47c0381221606e9d792aa21de03"
+      },
+      "extra_variables": {
+        "GH_EXTRA_ENV_KEY": "ghExtraEnvValue"
       }
     }
   }
