@@ -36,7 +36,7 @@ Go to **Settings → Secrets and variables → Actions → New repository secret
 
 | Secret | Value | Source |
 |---|---|---|
-| `GH_APP_ID` | Numeric App ID | Provided by Valoriz DevOps |
+| `GH_APP_CLIENT_ID` | Numeric App ID | Provided by Valoriz DevOps |
 | `GH_APP_PRIVATE_KEY` | Full `.pem` private key contents | Provided by Valoriz DevOps |
 | `CF_API_TOKEN` | Cloudflare API token | See [Cloudflare API token](#cloudflare-api-token) below |
 
@@ -168,7 +168,7 @@ Click **+ Add policy**, change the resource to **All zones** (or specific zones)
 | Symptom | Fix |
 |---|---|
 | `Generate token for client repo` fails with 404 | GitHub App is not installed on this repository — install it via the app install link |
-| `Generate token for IaC repo` fails with 404 | `GH_APP_ID` or `GH_APP_PRIVATE_KEY` secret is missing or incorrect |
+| `Generate token for IaC repo` fails with 404 | `GH_APP_CLIENT_ID` or `GH_APP_PRIVATE_KEY` secret is missing or incorrect |
 | IaC checkout fails (401) | App is installed but does not have Contents read permission on `streakjs-common-infra` |
 | Onboard fails writing secrets (403) | App is installed but missing Secrets/Variables/Environments write permissions — reinstall with correct permissions |
 | `Config file not found` in onboard | Commit `.github/iac-config.json` to the default branch before running |
