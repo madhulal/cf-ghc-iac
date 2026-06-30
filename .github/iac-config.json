@@ -1,6 +1,6 @@
 {
   "_comment": "Shared values are defaults for all environments. Any field can be overridden per-environment inside environments.<env>, including nested objects like 'cloudflare' (deep-merged key by key). The 'cloudflare' block holds Cloudflare-specific account/zone settings and is only required if at least one application in that environment has \"platform\": \"cloudflare\" — omit it entirely for environments that don't use Cloudflare. Use extra_variables (root and/or per-env, deep-merged) to set any project-specific GitHub Environment variables — they are version-controlled here and set automatically during onboarding. Secrets cannot be stored here; pass them at dispatch time.",
-  "project_name": "soukhya",
+  "project_name": "soukhya-mmg",
   "cloudflare": {
     "account_id": "c11d8ac6c92da6aab9be18f4e4070b2c",
     "r2_bucket_location": "apac",
