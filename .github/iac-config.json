@@ -25,12 +25,25 @@
           "worker_name": "web-streakjs-dev",
           "worker_script_path": "iac/cloudflare/scripts/web-streakjs-cf-worker.js",
           "r2_bucket_name": "web-streakjs-deployments-dev-001",
+          "secret_vars": ["SECRET1", "SECRET2"],
+          "env_vars": {"VAR1": "VALUE1", "VAR2": "VALUE2"},
           "worker_custom_domains": [
             {
               "hostname": "dev.soukhyaayurvedic.com",
               "zone_id": "fae2a47c0381221606e9d792aa21de03"
             }
           ]
+        },
+        {
+          "type": "pages",
+          "platform": "cloudflare",
+          "name": "cms-sanity",
+          "pages_name": "cms-streakjs-dev",
+          "pages_prod_branch": "qa",
+          "pages_custom_domain": {
+            "hostname": "cms-dev.soukhyaayurvedic.com",
+            "zone_id": "fae2a47c0381221606e9d792aa21de03"
+          }
         }
       ]
     },
