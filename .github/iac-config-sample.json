@@ -1,0 +1,175 @@
+{
+  "_comment": "Shared values are defaults for all environments. Any field can be overridden per-environment inside environments.<env>, including nested objects like 'cloudflare' (deep-merged key by key). The 'cloudflare' block holds Cloudflare-specific account/zone settings and is only required if at least one application in that environment has \"platform\": \"cloudflare\" — omit it entirely for environments that don't use Cloudflare. Use extra_variables (root and/or per-env, deep-merged) to set any project-specific GitHub Environment variables — they are version-controlled here and set automatically during onboarding. Secrets cannot be stored here; pass them at dispatch time.",
+  "project_name": "valoriz",
+  "cloudflare": {
+    "account_id": "8347b9ee9654941108107cb4a43cf3a9",
+    "r2_bucket_location": "apac",
+    "worker_compatibility_date": "2026-06-04",
+    "security_contact": "info@valoriz.com",
+    "dmarc_policy": "reject",
+    "dmarc_rua": ""
+  },
+  "environments": {
+    "dev": {
+      "cloudflare": {
+        "manage_zone_resources": "false"
+      },
+      "applications": [
+        {
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "web-streakjs",
+          "worker_name": "web-valoriz-streakjs-dev",
+          "worker_script_path": "iac/cloudflare/scripts/web-streakjs-cf-worker.js",
+          "r2_bucket_name": "web-valoriz-streakjs-deployments-dev-001",
+          "secret_vars": [],
+          "env_vars": {},
+          "worker_custom_domains": [
+            {
+              "hostname": "dev.valoriz.com",
+              "zone_id": "41f54660f54f726834c95bdb7d0e419f"
+            }
+          ]
+        }
+      ]
+    },
+    "qa": {
+      "cloudflare": {
+        "manage_zone_resources": "false"
+      },
+      "extra_variables": {
+        "SANITY_DATA_SET": "qa"
+      },
+      "applications": [
+        {
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "web-streakjs",
+          "worker_name": "web-valoriz-streakjs-qa",
+          "worker_script_path": "iac/cloudflare/scripts/web-streakjs-cf-worker.js",
+          "r2_bucket_name": "web-valoriz-streakjs-deployments-qa-001",
+          "secret_vars": [],
+          "env_vars": {},
+          "worker_custom_domains": [
+            {
+              "hostname": "qa.valoriz.com",
+              "zone_id": "41f54660f54f726834c95bdb7d0e419f"
+            }
+          ]
+        },
+        {
+          "type": "pages",
+          "platform": "cloudflare",
+          "name": "cms-sanity",
+          "pages_name": "cms-valoriz-sanity-qa",
+          "pages_prod_branch": "qa",
+          "pages_custom_domain": {
+            "hostname": "cms-qa.valoriz.com",
+            "zone_id": "41f54660f54f726834c95bdb7d0e419f"
+          }
+        },
+        {
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "email-googleapps",
+          "worker_name": "email-common-google-qa",
+          "worker_script_path": "iac/cloudflare/scripts/email-googleapps-cf-worker.js",
+          "secret_vars": ["GOOGLE_SCRIPT_URL", "EMAIL_API_KEY"],
+          "env_vars": {},
+          "worker_custom_domains": [
+            {
+              "hostname": "email-qa.valoriz.com",
+              "zone_id": "41f54660f54f726834c95bdb7d0e419f"
+            }
+          ]
+        },
+        {
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "email-resend",
+          "worker_name": "email-resend-qa",
+          "worker_script_path": "iac/cloudflare/scripts/email-resend-cf-worker.js",
+          "secret_vars": ["RESEND_API_KEY", "EMAIL_API_KEY"],
+          "env_vars": {
+            "RESEND_FROM_ADDRESS": "no-reply@valoriz.com"
+          },
+          "worker_custom_domains": [
+            {
+              "hostname": "email-resend-qa.valoriz.com",
+              "zone_id": "41f54660f54f726834c95bdb7d0e419f"
+            }
+          ]
+        }
+      ]
+    },
+    "prod": {
+      "cloudflare": {
+        "manage_zone_resources": "true"
+      },
+      "extra_variables": {
+        "SANITY_DATA_SET": "production"
+      },
+      "applications": [
+        {
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "web-streakjs",
+          "worker_name": "web-valoriz-streakjs",
+          "worker_script_path": "iac/cloudflare/scripts/web-streakjs-cf-worker.js",
+          "r2_bucket_name": "web-valoriz-streakjs-deployments-001",
+          "secret_vars": [],
+          "env_vars": {},
+          "worker_custom_domains": [
+            {
+              "hostname": "www.valoriz.com",
+              "zone_id": "41f54660f54f726834c95bdb7d0e419f"
+            }
+          ]
+        },
+        {
+          "type": "pages",
+          "platform": "cloudflare",
+          "name": "cms-sanity",
+          "pages_name": "cms-valoriz-sanity",
+          "pages_prod_branch": "main",
+          "pages_custom_domain": {
+            "hostname": "cms.valoriz.com",
+            "zone_id": "41f54660f54f726834c95bdb7d0e419f"
+          }
+        },
+        {
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "email-googleapps",
+          "worker_name": "email-common-google",
+          "worker_script_path": "iac/cloudflare/scripts/email-googleapps-cf-worker.js",
+          "secret_vars": ["GOOGLE_SCRIPT_URL", "EMAIL_API_KEY"],
+          "env_vars": {},
+          "worker_custom_domains": [
+            {
+              "hostname": "email.valoriz.com",
+              "zone_id": "41f54660f54f726834c95bdb7d0e419f"
+            }
+          ]
+        },
+        {
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "email-resend",
+          "worker_name": "email-resend",
+          "worker_script_path": "iac/cloudflare/scripts/email-resend-cf-worker.js",
+          "secret_vars": ["RESEND_API_KEY", "EMAIL_API_KEY"],
+          "env_vars": {
+            "RESEND_FROM_ADDRESS": "no-reply@valoriz.com"
+          },
+          "worker_custom_domains": [
+            {
+              "hostname": "email-resend.valoriz.com",
+              "zone_id": "41f54660f54f726834c95bdb7d0e419f"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,66 +1,102 @@
 {
-  "_comment": "Shared values are defaults for all environments. Any field can be overridden per-environment inside environments.<env>. cf_account_id, cf_worker_custom_domains, and cf_manage_zone_resources are commonly overridden per-env when environments are on different Cloudflare accounts or domains. Use extra_variables (per-env) to set any project-specific GitHub Environment variables — they are version-controlled here and set automatically during onboarding. Secrets cannot be stored here; store them as repository secrets.",
+  "_comment": "Shared values are defaults for all environments. Any field can be overridden per-environment inside environments.<env>, including nested objects like 'cloudflare' (deep-merged key by key). The 'cloudflare' block holds Cloudflare-specific account/zone settings and is only required if at least one application in that environment has \"platform\": \"cloudflare\" — omit it entirely for environments that don't use Cloudflare. Use extra_variables (root and/or per-env, deep-merged) to set any project-specific GitHub Environment variables — they are version-controlled here and set automatically during onboarding. Secrets cannot be stored here; pass them at dispatch time.",
   "project_name": "soukhya",
-  "cf_account_id": "c11d8ac6c92da6aab9be18f4e4070b2c",
-  "cf_r2_bucket_location": "APAC",
-  "cf_worker_compatibility_date": "2026-05-21",
-  "cf_security_contact": "mailto:soukhyaayurvediccenter@gmail.com",
-  "cf_dmarc_policy": "reject",
-  "cf_dmarc_rua": "",
+  "cloudflare": {
+    "account_id": "c11d8ac6c92da6aab9be18f4e4070b2c",
+    "r2_bucket_location": "apac",
+    "worker_compatibility_date": "2026-05-21",
+    "security_contact": "mailto:soukhyaayurvediccenter@gmail.com",
+    "dmarc_policy": "reject",
+    "dmarc_rua": ""
+  },
+  "extra_variables": {
+    "GH_EXTRA_ENV_KEY": "ghExtraEnvValue"
+  },
   "environments": {
     "dev": {
-      "cf_worker_name": "web-streakjs-dev",
-      "cf_r2_bucket_name": "web-streakjs-deployments-dev-001",
-      "cf_manage_zone_resources": "false",
-      "cf_worker_custom_domains": [
+      "cloudflare": {
+        "manage_zone_resources": "false"
+      },
+      "applications": [
         {
-          "hostname": "dev.soukhyaayurvedic.com",
-          "zone_id": "fae2a47c0381221606e9d792aa21de03"
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "web-streakjs",
+          "worker_name": "web-streakjs-dev",
+          "worker_script_path": "iac/cloudflare/scripts/web-streakjs-cf-worker.js",
+          "r2_bucket_name": "web-streakjs-deployments-dev-001",
+          "worker_custom_domains": [
+            {
+              "hostname": "dev.soukhyaayurvedic.com",
+              "zone_id": "fae2a47c0381221606e9d792aa21de03"
+            }
+          ]
         }
-      ],
-      "extra_variables": {
-        "GH_EXTRA_ENV_KEY": "ghExtraEnvValue"
-      }
+      ]
     },
     "qa": {
-      "cf_worker_name": "web-streakjs-qa",
-      "cf_r2_bucket_name": "web-streakjs-deployments-qa-001",
-      "cf_manage_zone_resources": "false",
-      "cf_worker_custom_domains": [
-        {
-          "hostname": "qa.soukhyaayurvedic.com",
-          "zone_id": "fae2a47c0381221606e9d792aa21de03"
-        }
-      ],
-      "cf_pages_name": "cms-streakjs-qa",
-      "cf_pages_prod_branch": "qa",
-      "cf_pages_custom_domain": {
-        "hostname": "cms-qa.soukhyaayurvedic.com",
-        "zone_id": "fae2a47c0381221606e9d792aa21de03"
+      "cloudflare": {
+        "manage_zone_resources": "false"
       },
-      "extra_variables": {
-        "GH_EXTRA_ENV_KEY": "ghExtraEnvValue"
-      }
+      "applications": [
+        {
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "web-streakjs",
+          "worker_name": "web-streakjs-qa",
+          "worker_script_path": "iac/cloudflare/scripts/web-streakjs-cf-worker.js",
+          "r2_bucket_name": "web-streakjs-deployments-qa-001",
+          "worker_custom_domains": [
+            {
+              "hostname": "qa.soukhyaayurvedic.com",
+              "zone_id": "fae2a47c0381221606e9d792aa21de03"
+            }
+          ]
+        },
+        {
+          "type": "pages",
+          "platform": "cloudflare",
+          "name": "cms-sanity",
+          "pages_name": "cms-streakjs-qa",
+          "pages_prod_branch": "qa",
+          "pages_custom_domain": {
+            "hostname": "cms-qa.soukhyaayurvedic.com",
+            "zone_id": "fae2a47c0381221606e9d792aa21de03"
+          }
+        }
+      ]
     },
     "prod": {
-      "cf_worker_name": "web-streakjs",
-      "cf_r2_bucket_name": "web-streakjs-deployments-001",
-      "cf_manage_zone_resources": "true",
-      "cf_worker_custom_domains": [
-        {
-          "hostname": "www.soukhyaayurvedic.com",
-          "zone_id": "fae2a47c0381221606e9d792aa21de03"
-        }
-      ],
-      "cf_pages_name": "cms-sanity",
-      "cf_pages_prod_branch": "main",
-      "cf_pages_custom_domain": {
-        "hostname": "cms.soukhyaayurvedic.com",
-        "zone_id": "fae2a47c0381221606e9d792aa21de03"
+      "cloudflare": {
+        "manage_zone_resources": "true"
       },
-      "extra_variables": {
-        "GH_EXTRA_ENV_KEY": "ghExtraEnvValue"
-      }
+      "applications": [
+        {
+          "type": "worker",
+          "platform": "cloudflare",
+          "name": "web-streakjs",
+          "worker_name": "web-streakjs",
+          "worker_script_path": "iac/cloudflare/scripts/web-streakjs-cf-worker.js",
+          "r2_bucket_name": "web-streakjs-deployments-001",
+          "worker_custom_domains": [
+            {
+              "hostname": "www.soukhyaayurvedic.com",
+              "zone_id": "fae2a47c0381221606e9d792aa21de03"
+            }
+          ]
+        },
+        {
+          "type": "pages",
+          "platform": "cloudflare",
+          "name": "cms-sanity",
+          "pages_name": "cms-sanity",
+          "pages_prod_branch": "main",
+          "pages_custom_domain": {
+            "hostname": "cms.soukhyaayurvedic.com",
+            "zone_id": "fae2a47c0381221606e9d792aa21de03"
+          }
+        }
+      ]
     }
   }
 }

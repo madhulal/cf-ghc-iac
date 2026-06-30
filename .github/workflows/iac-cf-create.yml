@@ -29,25 +29,11 @@ jobs:
     env:
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
-      TF_STATE_PROJECT: ${{ vars.TF_STATE_PROJECT }}
       TF_STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
       TF_STATE_RESOURCE_GROUP: ${{ vars.TF_STATE_RESOURCE_GROUP }}
       TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
       TF_STATE_SAS_TOKEN: ${{ secrets.TF_STATE_SAS_TOKEN }}
       TF_VAR_cloudflare_api_token: ${{ secrets.CF_API_TOKEN }}
-      TF_VAR_cloudflare_account_id: ${{ vars.CF_ACCOUNT_ID }}
-      TF_VAR_worker_name: ${{ vars.CF_WORKER_NAME }}
-      TF_VAR_r2_bucket_name: ${{ vars.CF_R2_BUCKET_NAME }}
-      TF_VAR_worker_compatibility_date: ${{ vars.CF_WORKER_COMPATIBILITY_DATE }}
-      TF_VAR_pages_web_cms_name: ${{ vars.CF_PAGES_WEB_CMS_NAME }}
-      TF_VAR_cloudflare_worker_custom_domains: ${{ vars.CF_WORKER_CUSTOM_DOMAINS || '[]' }}
-      TF_VAR_cloudflare_pages_custom_domain: ${{ vars.CF_PAGES_CUSTOM_DOMAINS || 'null' }}
-      TF_VAR_cloudflare_r2_bucket_location: ${{ vars.CF_R2_BUCKET_LOCATION }}
-      TF_VAR_pages_web_cms_production_branch: ${{ vars.CF_PAGES_PROD_BRANCH }}
-      TF_VAR_manage_zone_resources: ${{ vars.CF_MANAGE_ZONE_RESOURCES || 'true' }}
-      TF_VAR_security_contact: ${{ vars.CF_SECURITY_CONTACT || '' }}
-      TF_VAR_dmarc_policy: ${{ vars.CF_DMARC_POLICY || 'reject' }}
-      TF_VAR_dmarc_rua: ${{ vars.CF_DMARC_RUA || '' }}
 
     steps:
       - name: Checkout pipeline repo
@@ -66,9 +52,69 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: valoriz/streakjs-common-infra
-          ref: main
+          ref: mmg/reorganize_config_file
           token: ${{ steps.iac-token.outputs.token }}
           path: infra
+
+      # Reads .github/iac-config.json fresh on every run (shared with iac-cf-onboard.yml /
+      # iac-cf-destroy.yml) instead of relying on GitHub variables set at onboard time — so
+      # Terraform always applies what's actually in the config file right now, with no separate
+      # copy that can drift if the file changes without onboarding being re-run. Sets PROJECT_NAME,
+      # CF_ACCOUNT_ID, CF_WORKERS, CF_PAGES_PROJECTS, CF_R2_BUCKET_LOCATION, etc., and the
+      # TF_VAR_cloudflare_account_id / TF_VAR_workers / TF_VAR_pages_projects aliases directly.
+      - name: Read IAC config
+        working-directory: .
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment }}
+          CONFIG_FILE: .github/iac-config.json
+        run: |
+          chmod +x infra/iac/cloudflare/scripts/read-iac-config.sh
+          infra/iac/cloudflare/scripts/read-iac-config.sh
+
+      # Fixed, known-name worker secrets (see iac-cf-onboard.yml) assembled into the single map
+      # Terraform's var.worker_secrets expects — built with jq (not string interpolation) so a
+      # secret value containing a quote or backslash can never produce malformed JSON. Empty
+      # string for any secret not stored on this repo; harmless since no worker is forced to use it.
+      - name: Build worker secrets map
+        # Default working-directory is infra/iac/cloudflare/environments/common, which doesn't
+        # exist until "Checkout IaC repo" runs above — this step touches no files, so run it from repo root.
+        working-directory: .
+        env:
+          GOOGLE_SCRIPT_URL: ${{ secrets.GOOGLE_SCRIPT_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}
+        run: |
+          WORKER_SECRETS=$(jq -n -c \
+            --arg google_script_url "$GOOGLE_SCRIPT_URL" \
+            --arg resend_api_key "$RESEND_API_KEY" \
+            --arg email_api_key "$EMAIL_API_KEY" \
+            '{GOOGLE_SCRIPT_URL: $google_script_url, RESEND_API_KEY: $resend_api_key, EMAIL_API_KEY: $email_api_key}')
+          echo "TF_VAR_worker_secrets=$WORKER_SECRETS" >> "$GITHUB_ENV"
+
+          # Guard against silently blanking a secret already deployed to Cloudflare: if a worker's
+          # secret_vars names a key that resolves empty here, fail loudly instead of letting
+          # Terraform push an empty string over whatever value is live.
+          MISSING_SECRETS=$(echo "$CF_WORKERS" | jq -r --argjson secrets "$WORKER_SECRETS" \
+            '[.[] | .name as $w | (.secret_vars // [])[] | select(($secrets[.] // "") == "") | "\($w): \(.)"] | join(", ")')
+          if [[ -n "$MISSING_SECRETS" ]]; then
+            echo "❌ Worker(s) reference secret_vars with no value set: $MISSING_SECRETS"
+            echo "   Set the corresponding repository/environment secret before running this workflow."
+            exit 1
+          fi
+
+      # cloudflare_settings is assembled here from the values read-iac-config.sh resolved from
+      # iac-config.json (not GitHub variables) into the single object var.cloudflare_settings expects.
+      - name: Build cloudflare settings object
+        working-directory: .
+        run: |
+          echo "TF_VAR_cloudflare_settings=$(jq -n -c \
+            --arg r2_bucket_location "$CF_R2_BUCKET_LOCATION" \
+            --arg worker_compatibility_date "$CF_WORKER_COMPATIBILITY_DATE" \
+            --argjson manage_zone_resources "$([ "$CF_MANAGE_ZONE_RESOURCES" = "true" ] && echo true || echo false)" \
+            --arg security_contact "$CF_SECURITY_CONTACT" \
+            --arg dmarc_policy "$CF_DMARC_POLICY" \
+            --arg dmarc_rua "$CF_DMARC_RUA" \
+            '{r2_bucket_location: $r2_bucket_location, worker_compatibility_date: $worker_compatibility_date, manage_zone_resources: $manage_zone_resources, security_contact: $security_contact, dmarc_policy: $dmarc_policy, dmarc_rua: $dmarc_rua}')" >> "$GITHUB_ENV"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
@@ -76,7 +122,7 @@ jobs:
       - name: Validate required configuration
         run: |
           required_vars=(
-            TF_STATE_PROJECT
+            PROJECT_NAME
             TF_STATE_STORAGE_ACCOUNT
             TF_STATE_RESOURCE_GROUP
             TF_STATE_CONTAINER
@@ -98,7 +144,7 @@ jobs:
 
       - name: Terraform Init (dynamic backend)
         run: |
-          STATE_KEY="streakjs-clients/${TF_STATE_PROJECT}/${{ github.event.inputs.environment }}.terraform.tfstate"
+          STATE_KEY="streakjs-clients/${PROJECT_NAME}/${{ github.event.inputs.environment }}.terraform.tfstate"
           SAS_TOKEN="${TF_STATE_SAS_TOKEN#\?}"
 
           terraform init -reconfigure \

@@ -12,7 +12,7 @@ on:
           - qa
           - prod
       cf_api_token:
-        description: 'Cloudflare API Token for this client. Leave blank to use the pre-stored CF_API_TOKEN repository secret.'
+        description: 'Cloudflare API Token for this client. Only needed if this environment has a "platform: cloudflare" application. Leave blank to use the pre-stored CF_API_TOKEN repository secret.'
         required: false
         type: string
       config_file:
@@ -51,12 +51,39 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
 
+      - name: Checkout IaC repo
+        uses: actions/checkout@v6
+        with:
+          repository: valoriz/streakjs-common-infra
+          ref: mmg/reorganize_config_file
+          token: ${{ steps.iac-token.outputs.token }}
+          path: infra
+
+      # Shared with iac-cf-create.yml/iac-cf-destroy.yml so the config is parsed/validated
+      # identically everywhere. Mainly used here for early validation — most of its output
+      # (CF_WORKERS, CF_ACCOUNT_ID, etc.) isn't written as a GitHub variable anymore; only the
+      # Cloudflare token and worker secrets actually get persisted, below.
+      - name: Read IAC config file
+        id: config
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment }}
+          CONFIG_FILE: ${{ github.event.inputs.config_file }}
+        run: |
+          chmod +x infra/iac/cloudflare/scripts/read-iac-config.sh
+          infra/iac/cloudflare/scripts/read-iac-config.sh
+
+      # Only required if this environment has a 'platform: cloudflare' application (HAS_CLOUDFLARE_APP,
+      # set by "Read IAC config file" above) — an all-Netlify/all-AWS environment never needs a
+      # Cloudflare token at all, and isn't asked for one.
       - name: Resolve Cloudflare token
         env:
           INPUT_CF_API_TOKEN:  ${{ github.event.inputs.cf_api_token }}
           SECRET_CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: |
-          if [[ -n "$INPUT_CF_API_TOKEN" ]]; then
+          if [[ "$HAS_CLOUDFLARE_APP" != "true" ]]; then
+            echo "CF_API_TOKEN_RESOLVED=" >> "$GITHUB_ENV"
+            echo "ℹ️  No 'platform: cloudflare' application in this environment — skipping Cloudflare token"
+          elif [[ -n "$INPUT_CF_API_TOKEN" ]]; then
             echo "CF_API_TOKEN_RESOLVED=$INPUT_CF_API_TOKEN" >> "$GITHUB_ENV"
           elif [[ -n "$SECRET_CF_API_TOKEN" ]]; then
             echo "CF_API_TOKEN_RESOLVED=$SECRET_CF_API_TOKEN" >> "$GITHUB_ENV"
@@ -65,99 +92,18 @@ jobs:
             exit 1
           fi
 
-      - name: Read IAC config file
-        id: config
-        env:
-          ENV_NAME: ${{ github.event.inputs.environment }}
-          CONFIG_FILE: ${{ github.event.inputs.config_file }}
-        run: |
-          if [[ ! -f "$CONFIG_FILE" ]]; then
-            echo "❌ Config file not found: $CONFIG_FILE"
-            exit 1
-          fi
-
-          echo "📄 Reading config from $CONFIG_FILE for environment: $ENV_NAME"
-
-          if ! jq empty "$CONFIG_FILE" 2>/dev/null; then
-            echo "❌ Config file is not valid JSON: $CONFIG_FILE"
-            exit 1
-          fi
-
-          # Validate the selected environment exists
-          if ! jq -e --arg env "$ENV_NAME" '.environments[$env]' "$CONFIG_FILE" > /dev/null; then
-            echo "❌ Environment '$ENV_NAME' not found in $CONFIG_FILE"
-            echo "   Available environments: $(jq -r '.environments | keys | join(", ")' "$CONFIG_FILE")"
-            exit 1
-          fi
-
-          # Merge: shared top-level fields (excluding 'environments') are overridden by env-specific fields
-          CFG=$(jq -c --arg env "$ENV_NAME" \
-            'del(._comment, .environments) * (.environments[$env])' \
-            "$CONFIG_FILE")
-
-          # Required fields
-          PROJECT_NAME=$(echo "$CFG" | jq -r '.project_name // empty')
-          CF_ACCOUNT_ID=$(echo "$CFG" | jq -r '.cf_account_id // empty')
-
-          if [[ -z "$PROJECT_NAME" ]]; then
-            echo "❌ Missing required field: project_name (set at top level or under environments.$ENV_NAME)"
-            exit 1
-          fi
-
-          if [[ -z "$CF_ACCOUNT_ID" ]]; then
-            echo "❌ Missing required field: cf_account_id (set at top level or under environments.$ENV_NAME)"
-            exit 1
-          fi
-
-          # Optional fields
-          CF_WORKER_NAME=$(echo "$CFG"              | jq -r '.cf_worker_name // ""')
-          CF_R2_BUCKET_NAME=$(echo "$CFG"           | jq -r '.cf_r2_bucket_name // ""')
-          CF_WORKER_COMPATIBILITY_DATE=$(echo "$CFG" | jq -r '.cf_worker_compatibility_date // ""')
-          CF_PAGES_WEB_CMS_NAME=$(echo "$CFG"       | jq -r '.cf_pages_name // ""')
-          CF_WORKER_CUSTOM_DOMAINS=$(echo "$CFG"    | jq -c '.cf_worker_custom_domains // []')
-          CF_PAGES_CUSTOM_DOMAINS=$(echo "$CFG"     | jq -r 'if .cf_pages_custom_domain then (.cf_pages_custom_domain | tojson) else "" end')
-          CF_PAGES_PROD_BRANCH=$(echo "$CFG"        | jq -r '.cf_pages_prod_branch // ""')
-          CF_R2_BUCKET_LOCATION=$(echo "$CFG"       | jq -r '.cf_r2_bucket_location // "APAC"')
-          CF_MANAGE_ZONE_RESOURCES=$(echo "$CFG"    | jq -r '.cf_manage_zone_resources // "true"')
-          CF_SECURITY_CONTACT=$(echo "$CFG"         | jq -r '.cf_security_contact // ""')
-          CF_DMARC_POLICY=$(echo "$CFG"             | jq -r '.cf_dmarc_policy // ""')
-          CF_DMARC_RUA=$(echo "$CFG"                | jq -r '.cf_dmarc_rua // ""')
-          EXTRA_VARIABLES=$(echo "$CFG"             | jq -c '.extra_variables // null')
-
-          {
-            echo "PROJECT_NAME=$PROJECT_NAME"
-            echo "CF_ACCOUNT_ID=$CF_ACCOUNT_ID"
-            echo "CF_WORKER_NAME=$CF_WORKER_NAME"
-            echo "CF_R2_BUCKET_NAME=$CF_R2_BUCKET_NAME"
-            echo "CF_WORKER_COMPATIBILITY_DATE=$CF_WORKER_COMPATIBILITY_DATE"
-            echo "CF_PAGES_WEB_CMS_NAME=$CF_PAGES_WEB_CMS_NAME"
-            echo "CF_WORKER_CUSTOM_DOMAINS=$CF_WORKER_CUSTOM_DOMAINS"
-            echo "CF_PAGES_CUSTOM_DOMAINS=$CF_PAGES_CUSTOM_DOMAINS"
-            echo "CF_PAGES_PROD_BRANCH=$CF_PAGES_PROD_BRANCH"
-            echo "CF_R2_BUCKET_LOCATION=$CF_R2_BUCKET_LOCATION"
-            echo "CF_MANAGE_ZONE_RESOURCES=$CF_MANAGE_ZONE_RESOURCES"
-            echo "CF_SECURITY_CONTACT=$CF_SECURITY_CONTACT"
-            echo "CF_DMARC_POLICY=$CF_DMARC_POLICY"
-            echo "CF_DMARC_RUA=$CF_DMARC_RUA"
-            echo "EXTRA_VARIABLES=$EXTRA_VARIABLES"
-          } >> "$GITHUB_ENV"
-
-          echo "✅ Config loaded: project=$PROJECT_NAME env=$ENV_NAME"
-
-      - name: Checkout IaC repo
-        uses: actions/checkout@v6
-        with:
-          repository: valoriz/streakjs-common-infra
-          ref: main
-          token: ${{ steps.iac-token.outputs.token }}
-          path: infra
-
       - name: Run onboarding script
         env:
           GH_TOKEN: ${{ steps.client-token.outputs.token }}
           REPO: ${{ github.repository }}
           ENV_NAME: ${{ github.event.inputs.environment }}
           CF_API_TOKEN: ${{ env.CF_API_TOKEN_RESOLVED }}
+          # Worker secrets are pre-stored repository secrets only (no dispatch input) — keeps the
+          # onboard dispatch form free of fields most projects never use. Set once via
+          # `gh secret set GOOGLE_SCRIPT_URL ...` etc. before onboarding, if a worker needs them.
+          GOOGLE_SCRIPT_URL: ${{ secrets.GOOGLE_SCRIPT_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}
           # All remaining vars (including EXTRA_VARIABLES) are populated from the config file via GITHUB_ENV
         run: |
           chmod +x infra/iac/cloudflare/scripts/onboard-client.sh

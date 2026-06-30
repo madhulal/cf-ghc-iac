@@ -1,0 +1,18 @@
+[
+  { "key": "account_settings",      "type": "read", "name": "Account Settings Read",       "scope": "account", "description": "Account Settings — Read" },
+  { "key": "workers_scripts",       "type": "edit", "name": "Workers Scripts Write",        "scope": "account", "description": "Workers Scripts — Edit" },
+  { "key": "workers_r2_storage",    "type": "edit", "name": "Workers R2 Storage Write",     "scope": "account", "description": "Workers R2 Storage — Edit" },
+  { "key": "pages",                 "type": "edit", "name": "Pages Write",                  "scope": "account", "description": "Cloudflare Pages — Edit" },
+  { "key": "waf",                   "type": "edit", "name": "Zone WAF Write",               "scope": "zone",    "description": "Zone WAF — Edit" },
+  { "key": "zone_settings",         "type": "edit", "name": "Zone Settings Write",          "scope": "zone",    "description": "Zone Settings — Edit" },
+  { "key": "firewall_services",     "type": "edit", "name": "Firewall Services Write",      "scope": "zone",    "description": "Firewall Services — Edit" },
+  { "key": "dns",                   "type": "edit", "name": "DNS Write",                    "scope": "zone",    "description": "DNS — Edit" },
+  { "key": "config_settings",       "type": "edit", "name": "Config Settings Write",        "scope": "zone",    "description": "Config Settings — Edit" },
+  { "key": "zone",                  "type": "read", "name": "Zone Read",                    "scope": "zone",    "description": "Zone — Read" },
+  { "key": "page_rules",            "type": "edit", "name": "Page Rules Write",             "scope": "zone",    "description": "Page Rules — Edit" },
+  { "key": "bot_management",        "type": "edit", "name": "Bot Management Write",         "scope": "zone",    "description": "Bot Management — Edit" },
+  { "key": "dynamic_url_redirects", "type": "edit", "name": "Dynamic URL Redirects Write",   "scope": "zone",    "description": "Dynamic URL Redirects — Edit" },
+  { "key": "cache_settings",        "type": "edit", "name": "Cache Settings Write",         "scope": "zone",    "description": "Cache Settings — Edit" },
+  { "key": "transform_rules",       "type": "edit", "name": "Zone Transform Rules Write",   "scope": "zone",    "description": "Zone Transform Rules — Edit" },
+  { "key": "cache_purge",           "type": "purge", "name": "Cache Purge",                 "scope": "zone",    "description": "Cache — Purge" }
+]
