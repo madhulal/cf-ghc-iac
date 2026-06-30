@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared values are defaults for all environments. Any field can be overridden per-environment inside environments.<env>, including nested objects like 'cloudflare' (deep-merged key by key). The 'cloudflare' block holds Cloudflare-specific account/zone settings and is only required if at least one application in that environment has \"platform\": \"cloudflare\" — omit it entirely for environments that don't use Cloudflare. Use extra_variables (root and/or per-env, deep-merged) to set any project-specific GitHub Environment variables — they are version-controlled here and set automatically during onboarding. Secrets cannot be stored here; pass them at dispatch time.",
+  "_comment": "Shared values are defaults for all environments. Any field can be overridden per-environment inside environments.<env>, including nested objects like 'cloudflare' (deep-merged key by key). The 'cloudflare' block holds Cloudflare-specific account/zone settings and is only required if at least one application in that environment has \"platform\": \"cloudflare\" — omit it entirely for environments that don't use Cloudflare. extra_variables and extra_secret_vars also use root-vs-per-env placement to decide GitHub scope: a key/name only declared at the top level becomes a repository-level GitHub variable/secret (created once, shared by every environment via GitHub's automatic fallback); declared under environments.<env> instead, it becomes environment-scoped for that environment, overriding the repo-level one. extra_variables holds real values (set automatically during onboarding); extra_secret_vars holds only secret NAMES — onboarding creates a placeholder secret per name, then fill in the real value in GitHub. Don't list an already-existing secret name (e.g. CF_API_TOKEN) in extra_secret_vars — just reference it directly in that pipeline's workflow YAML instead. Secrets cannot be stored here; pass them at dispatch time.",
   "project_name": "soukhya-mmg",
   "cloudflare": {
     "account_id": "c11d8ac6c92da6aab9be18f4e4070b2c",
@@ -11,9 +11,10 @@
   },
   "extra_variables": {
     "GH_EXTRA_ENV_KEY": "ghExtraEnvValue",
-    "CF_ACCOUNT_ID": "c11d8ac6c92da6aab9be18f4e4070b2c"
+    "CF_ACCOUNT_ID": "c11d8ac6c92da6aab9be18f4e4070b2c",
+    "BUILD_ENV": "production"
   },
-  "extra_secret_vars": ["SHARED_TEST_SECRET"],
+  "extra_secret_vars": ["WEBHOOK_SIGNING_SECRET"],
   "environments": {
     "dev": {
       "cloudflare": {
@@ -21,9 +22,10 @@
         "security_contact": ""
       },
       "extra_variables": {
-        "CMS_PAGES_PROJECT_NAME": "cms-streakjs-dev"
+        "CMS_PAGES_PROJECT_NAME": "cms-streakjs-dev",
+        "BUILD_ENV": "development"
       },
-      "extra_secret_vars": ["SHARED_TEST_SECRET", "DEV_ONLY_TEST_SECRET"],
+      "extra_secret_vars": ["SANITY_API_TOKEN"],
       "applications": [
         {
           "type": "worker",
@@ -59,8 +61,10 @@
         "manage_zone_resources": "false"
       },
       "extra_variables": {
-        "CMS_PAGES_PROJECT_NAME": "cms-streakjs-qa"
+        "CMS_PAGES_PROJECT_NAME": "cms-streakjs-qa",
+        "BUILD_ENV": "staging"
       },
+      "extra_secret_vars": ["SANITY_API_TOKEN"],
       "applications": [
         {
           "type": "worker",
@@ -95,6 +99,7 @@
       "cloudflare": {
         "manage_zone_resources": "true"
       },
+      "extra_secret_vars": ["SANITY_API_TOKEN"],
       "extra_variables": {
         "CMS_PAGES_PROJECT_NAME": "cms-sanity"
       },

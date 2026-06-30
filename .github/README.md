@@ -231,7 +231,7 @@ When `cloudflare.manage_zone_resources = false`, these are skipped — everythin
 
 ## Config field reference
 
-`.github/iac-config.json` drives the onboarding. Top-level fields are shared defaults; `environments.<env>` fields override them per environment — including nested objects like `cloudflare` and `extra_variables`, which deep-merge key by key rather than fully replacing the root-level value.
+`.github/iac-config.json` drives the onboarding. Top-level fields are shared defaults; `environments.<env>` fields override them per environment — including nested objects like `cloudflare` and `extra_variables`, which deep-merge key by key rather than fully replacing the root-level value. For `extra_variables`/`extra_secret_vars` specifically, root vs per-environment placement also decides *GitHub scope*: a value only ever declared at the top level becomes a repository-level GitHub variable/secret (created once, shared by every environment via GitHub's automatic environment→repository fallback); a value declared under `environments.<env>` becomes environment-scoped for that environment, overriding the repo-level one — see [§ Extra pipeline secrets](#extra-pipeline-secrets-extra_secret_vars).
 
 | Field | Scope | Required | Description |
 |---|---|---|---|
@@ -244,8 +244,8 @@ When `cloudflare.manage_zone_resources = false`, these are skipped — everythin
 | `cloudflare.dmarc_policy` | shared / per-env | No | DMARC policy: `reject`, `quarantine`, or `none`. Omit to skip DMARC record |
 | `cloudflare.dmarc_rua` | shared / per-env | No | Email for DMARC aggregate reports. Leave empty to omit |
 | `applications` | per-env | No | Array of applications to provision for this environment — see below |
-| `extra_variables` | shared / per-env | No | Key-value object of additional GitHub Environment variables (e.g. `{"SANITY_DATA_SET": "development"}`). Version-controlled, set automatically during onboarding, fully removed during offboard. Secrets cannot be set here. Root-level value acts as a shared default that per-env values override key by key |
-| `extra_secret_vars` | shared / per-env | No | Array of secret *names* (never values) that a non-Terraform pipeline needs — e.g. a Sanity Studio deploy workflow. Onboarding creates a placeholder secret per name; fill in the real value afterward. See [§ Extra pipeline secrets](#extra-pipeline-secrets-extra_secret_vars) |
+| `extra_variables` | shared (→ repo-level) / per-env (→ env-scoped) | No | Key-value object of additional GitHub variables (e.g. `{"SANITY_DATA_SET": "development"}`). A key only declared at the top level becomes a repository variable, created once. A key declared under `environments.<env>` becomes an environment variable for that environment, overriding the repo-level one. Version-controlled, set automatically during onboarding. Secrets cannot be set here |
+| `extra_secret_vars` | shared (→ repo-level) / per-env (→ env-scoped) | No | Array of secret *names* (never values) that a non-Terraform pipeline needs — e.g. a Sanity Studio deploy workflow. A name only declared at the top level gets a repository-level placeholder secret, created once. A name declared under `environments.<env>` gets an environment-scoped placeholder for that environment — only list NEW names there, not ones already covered at the top level. Fill in each placeholder's real value afterward. See [§ Extra pipeline secrets](#extra-pipeline-secrets-extra_secret_vars) |
 
 ### Application fields (each entry in `applications[]`)
 
@@ -289,13 +289,23 @@ Before applying, `iac-cf-create.yml`/`iac-cf-destroy.yml` fail loudly if a worke
 
 ### Extra pipeline secrets (`extra_secret_vars`)
 
-Some pipelines aren't Terraform at all — e.g. a separate workflow that builds and deploys a Sanity Studio CMS to Cloudflare Pages via `wrangler-action`. They still need credentials, but they're hand-written workflows, not generated from `iac-config.json`. `extra_secret_vars` is an array of secret *names* (never values), version-controlled here, the same shape as a worker's `secret_vars`:
+Some pipelines aren't Terraform at all — e.g. a separate workflow that builds and deploys a Sanity Studio CMS to Cloudflare Pages via `wrangler-action`. They still need credentials, but they're hand-written workflows, not generated from `iac-config.json`. `extra_secret_vars` is an array of secret *names* (never values), version-controlled here, the same shape as a worker's `secret_vars` — except, unlike `secret_vars`, onboarding **does** act on it: it creates one placeholder secret per name (`REPLACE_ME_<NAME>`), at whichever GitHub scope the name is declared:
 
 ```jsonc
-"extra_secret_vars": ["SANITY_AUTH_TOKEN"]
+{
+  "extra_secret_vars": ["SHARED_SECRET"],
+  "environments": {
+    "dev": { "extra_secret_vars": ["DEV_ONLY_SECRET"] }
+  }
+}
 ```
 
-Unlike `secret_vars` on a worker, onboarding **does** act on this list: it creates one environment-scoped GitHub secret per name, each with a placeholder value (`REPLACE_ME_<NAME>`), so they show up individually in **Settings → Environments → `<env>` → Environment secrets** right after onboarding. Go fill in the real value for each one before the pipeline that needs it runs — `gh secret set <NAME> --env <env> --body '<real-value>'`, or edit it directly in the GitHub UI. Re-running onboarding never overwrites a value you've already filled in — it only creates secrets that don't exist yet.
+- A name listed at the **top level** (`SHARED_SECRET` above) gets a **repository-level** placeholder secret — created once, the first time any environment is onboarded. Every environment automatically gets this value via GitHub's built-in environment→repository secret fallback, with no per-environment copy needed.
+- A name listed under **`environments.<env>`** (`DEV_ONLY_SECRET` above, for `dev`) gets an **environment-scoped** placeholder secret for that environment only, taking precedence over any repo-level secret of the same name.
+
+You only need to list a name under an environment if that environment needs its own distinct value — **don't restate names already covered at the top level**; they're already available via the repo-level fallback. (If you do restate one, it just creates a second, redundant placeholder at that environment's scope — harmless, but unnecessary.)
+
+Either way, go fill in each placeholder's real value before the pipeline that needs it runs — `gh secret set <NAME> [--env <env>] --body '<real-value>'`, or edit it directly in the GitHub UI (**Settings → Secrets and variables → Actions** for repo-level, **Settings → Environments → `<env>`** for environment-scoped). Re-running onboarding never overwrites a value you've already filled in at that same scope — it only creates placeholders that don't exist yet.
 
 This works because `extra_secret_vars` is consumed by a project-specific pipeline you write yourself (e.g. `cd-cf-cms.yml`), which references each secret by a literal name you already chose — `${{ secrets.SANITY_AUTH_TOKEN }}` — unlike `WORKER_SECRETS`, where the *consuming* workflow (`iac-cf-create.yml`/`iac-cf-destroy.yml`) is shared and generic across every project, so it can't hardcode any project's specific secret names.
 
@@ -340,8 +350,10 @@ The table below follows `onboard-client.sh`'s actual execution order, step by st
 | 3 | `TF_STATE_CONTAINER` | Repository variable | IaC defaults — set once, shared across all environments |
 | 4 | `TF_STATE_SAS_TOKEN` | Repository secret | IaC defaults — set once, shared across all environments |
 | 5 | `CF_API_TOKEN` | Environment secret | Only written when `cf_api_token` is actually typed into the dispatch UI that run. If left blank, onboard falls back to the pre-stored `CF_API_TOKEN` repo secret *without* copying it down to the environment — `iac-cf-create.yml`/`iac-cf-destroy.yml` fall back to that same repo secret themselves at apply time (skipped entirely if no `platform: cloudflare` application) |
-| 6 | Any keys in `extra_variables` | Environment variable | `extra_variables` from config (root + per-env deep-merged) — read by other workflows (e.g. the app's own build pipeline), not Terraform |
-| 7 | Any names in `extra_secret_vars` | Environment secret | One placeholder secret (`REPLACE_ME_<NAME>`) created per name — skipped if a secret with that name already exists at repo or environment level. Fill in the real value afterward; see [§ Extra pipeline secrets](#extra-pipeline-secrets-extra_secret_vars) |
+| 6a | Top-level keys in `extra_variables` | Repository variable | Created once, shared by every environment via GitHub's automatic environment→repository fallback |
+| 6b | `environments.<env>`-level keys in `extra_variables` | Environment variable | Overrides the repo-level value of the same key, or adds a key new to this environment — read by other workflows (e.g. the app's own build pipeline), not Terraform |
+| 7a | Top-level names in `extra_secret_vars` | Repository secret | One placeholder secret (`REPLACE_ME_<NAME>`) created once, shared by every environment via GitHub's automatic fallback — skipped if it already exists at repo level |
+| 7b | `environments.<env>`-level names in `extra_secret_vars` | Environment secret | One placeholder secret created for this environment only — skipped if it already exists at environment level. Fill in the real value afterward; see [§ Extra pipeline secrets](#extra-pipeline-secrets-extra_secret_vars) |
 
 `WORKER_SECRETS` is **not** in this table because onboarding never touches it — developers set that one JSON-object secret directly (`gh secret set WORKER_SECRETS --env <env> --body '{...}'`) whenever a worker needs a new or rotated secret, with no onboarding re-run required. See [§ Worker secrets](#worker-secrets-secret_vars).
 
