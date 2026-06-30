@@ -26,11 +26,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      - name: Print Environment Variables
-        run: |
-          echo "CF_ACCOUNT_ID=${{ vars.CF_ACCOUNT_ID }}"
-          echo "CF_PAGES_WEB_CMS_NAME=${{ vars.CF_PAGES_WEB_CMS_NAME }}"
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -51,4 +46,4 @@ jobs:
           accountId: ${{ vars.CF_ACCOUNT_ID }}
           command: >
             pages deploy sanity-cms/dist
-            --project-name=${{ vars.CF_PAGES_WEB_CMS_NAME }}
+            --project-name=${{ vars.CMS_PAGES_PROJECT_NAME }}

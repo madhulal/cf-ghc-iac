@@ -245,6 +245,7 @@ When `cloudflare.manage_zone_resources = false`, these are skipped — everythin
 | `cloudflare.dmarc_rua` | shared / per-env | No | Email for DMARC aggregate reports. Leave empty to omit |
 | `applications` | per-env | No | Array of applications to provision for this environment — see below |
 | `extra_variables` | shared / per-env | No | Key-value object of additional GitHub Environment variables (e.g. `{"SANITY_DATA_SET": "development"}`). Version-controlled, set automatically during onboarding, fully removed during offboard. Secrets cannot be set here. Root-level value acts as a shared default that per-env values override key by key |
+| `extra_secret_vars` | shared / per-env | No | Array of secret *names* (never values) that a non-Terraform pipeline needs — e.g. a Sanity Studio deploy workflow. Onboarding creates a placeholder secret per name; fill in the real value afterward. See [§ Extra pipeline secrets](#extra-pipeline-secrets-extra_secret_vars) |
 
 ### Application fields (each entry in `applications[]`)
 
@@ -260,18 +261,23 @@ When `cloudflare.manage_zone_resources = false`, these are skipped — everythin
 | `pages_name` | `type: pages` | Yes | The actual Pages project name in Cloudflare |
 | `pages_prod_branch` | `type: pages` | No | Pages production branch (default: `main`) |
 | `pages_custom_domain` | `type: pages` | No | Object `{hostname, zone_id}` for the Pages custom domain |
-| `secret_vars` | `type: worker` | No | Array of secret names to bind onto this Worker, from the fixed allowlist below. Values come from GitHub Environment secrets, never from this file |
+| `secret_vars` | `type: worker` | No | Array of secret names to bind onto this Worker. Any name is allowed — values come from the `WORKER_SECRETS` GitHub Environment secret, never from this file |
 | `env_vars` | `type: worker` | No | Object of arbitrary plain-text bindings specific to this Worker (e.g. `{"RESEND_FROM_ADDRESS": "no-reply@example.com"}`) |
 
 ### Worker secrets (`secret_vars`)
 
-`iac-config.json` can never hold secret values — only secret *names*, via `secret_vars` on a worker application. The actual values are GitHub Environment secrets. Unlike `cf_api_token`, these are **pre-stored repository secrets only** — there's no dispatch input for them on **IAC Onboard**, so the onboard form stays free of fields most projects never use. If a worker needs one, set it once before onboarding:
+`iac-config.json` can never hold secret values — only secret *names*, via `secret_vars` on a worker application. The actual values live in **one** GitHub Environment secret, `WORKER_SECRETS`, holding a JSON object of `{"NAME": "value", ...}` pairs. A worker opts into a value by listing its key name in `secret_vars`; **any name is allowed**, with no fixed allowlist — add a brand new secret name without touching this repo at all.
+
+Set or update it directly — no onboarding step required:
 
 ```bash
-gh secret set GOOGLE_SCRIPT_URL --repo <owner>/<repo>
+gh secret set WORKER_SECRETS --env <env> --body '{
+  "GOOGLE_SCRIPT_URL": "https://script.google.com/macros/s/.../exec",
+  "MY_CUSTOM_API_KEY": "..."
+}'
 ```
 
-Only a fixed set of secret names is supported — GitHub Actions can only forward a secret by a name the workflow YAML already knows about, so this can't be a fully arbitrary/dynamic list:
+Re-running this completely replaces the previous value, so include every key you still want to keep, not just the one you're adding or changing. Three names are used by the example email workers in this template, but they're not special — just keys like any other:
 
 | Secret name | Used by | Purpose |
 |---|---|---|
@@ -279,7 +285,21 @@ Only a fixed set of secret names is supported — GitHub Actions can only forwar
 | `RESEND_API_KEY` | `email-resend-cf-worker.js` | Resend API key |
 | `EMAIL_API_KEY` | `email-googleapps-cf-worker.js`, `email-resend-cf-worker.js` | Shared key callers must present in the `X-API-Key` header — protects the email-sending endpoint from being called by anyone who finds the URL |
 
-Listing any other name in `secret_vars` fails onboarding with a clear error rather than silently doing nothing.
+Before applying, `iac-cf-create.yml`/`iac-cf-destroy.yml` fail loudly if a worker's `secret_vars` references a key that's missing or empty in `WORKER_SECRETS` — this stops Terraform from silently overwriting a real value already deployed to Cloudflare with a blank one.
+
+### Extra pipeline secrets (`extra_secret_vars`)
+
+Some pipelines aren't Terraform at all — e.g. a separate workflow that builds and deploys a Sanity Studio CMS to Cloudflare Pages via `wrangler-action`. They still need credentials, but they're hand-written workflows, not generated from `iac-config.json`. `extra_secret_vars` is an array of secret *names* (never values), version-controlled here, the same shape as a worker's `secret_vars`:
+
+```jsonc
+"extra_secret_vars": ["SANITY_AUTH_TOKEN"]
+```
+
+Unlike `secret_vars` on a worker, onboarding **does** act on this list: it creates one environment-scoped GitHub secret per name, each with a placeholder value (`REPLACE_ME_<NAME>`), so they show up individually in **Settings → Environments → `<env>` → Environment secrets** right after onboarding. Go fill in the real value for each one before the pipeline that needs it runs — `gh secret set <NAME> --env <env> --body '<real-value>'`, or edit it directly in the GitHub UI. Re-running onboarding never overwrites a value you've already filled in — it only creates secrets that don't exist yet.
+
+This works because `extra_secret_vars` is consumed by a project-specific pipeline you write yourself (e.g. `cd-cf-cms.yml`), which references each secret by a literal name you already chose — `${{ secrets.SANITY_AUTH_TOKEN }}` — unlike `WORKER_SECRETS`, where the *consuming* workflow (`iac-cf-create.yml`/`iac-cf-destroy.yml`) is shared and generic across every project, so it can't hardcode any project's specific secret names.
+
+If the other pipeline can reuse an existing secret instead — e.g. `secrets.CF_API_TOKEN`, already set for Terraform — there's no need to list it in `extra_secret_vars` at all (it already exists); just reference `secrets.CF_API_TOKEN` directly in that pipeline's workflow YAML.
 
 ---
 
@@ -311,21 +331,23 @@ Listing any other name in `secret_vars` fails onboarding with a clear error rath
 
 Most Cloudflare configuration (account ID, workers, Pages projects, R2/zone/DMARC settings) is **not** stored as a GitHub variable at all — `iac-cf-create.yml`/`iac-cf-destroy.yml` read `iac-config.json` directly on every run via `iac/cloudflare/scripts/read-iac-config.sh`. This means editing `iac-config.json` and re-running Create takes effect immediately; there's no separate copy of this config in GitHub that re-running onboard would need to refresh. Only real secrets, plus a few values shared org-wide or consumed by something other than this repo's own Terraform, are written to GitHub.
 
-| Variable / Secret | Level | Source |
-|---|---|---|
-| `TF_STATE_RESOURCE_GROUP` | Repository variable | IaC defaults — set once, shared across all environments |
-| `TF_STATE_STORAGE_ACCOUNT` | Repository variable | IaC defaults — set once, shared across all environments |
-| `TF_STATE_CONTAINER` | Repository variable | IaC defaults — set once, shared across all environments |
-| `TF_STATE_SAS_TOKEN` | Repository secret | IaC defaults — set once, shared across all environments |
-| `CF_API_TOKEN` | Environment secret | Only written when `cf_api_token` is actually typed into the dispatch UI that run. If left blank, onboard falls back to the pre-stored `CF_API_TOKEN` repo secret *without* copying it down to the environment — `iac-cf-create.yml`/`iac-cf-destroy.yml` fall back to that same repo secret themselves at apply time (skipped entirely if no `platform: cloudflare` application) |
-| `GOOGLE_SCRIPT_URL` | Environment secret | Pre-stored repo secret only, no dispatch input (skipped if no worker declares it in `secret_vars`) |
-| `RESEND_API_KEY` | Environment secret | Pre-stored repo secret only, no dispatch input (skipped if no worker declares it in `secret_vars`) |
-| `EMAIL_API_KEY` | Environment secret | Pre-stored repo secret only, no dispatch input (skipped if no worker declares it in `secret_vars`) |
-| Any keys in `extra_variables` | Environment variable | `extra_variables` from config (root + per-env deep-merged) — read by other workflows (e.g. the app's own build pipeline), not Terraform |
+The table below follows `onboard-client.sh`'s actual execution order, step by step:
+
+| # | Variable / Secret | Level | Source |
+|---|---|---|---|
+| 1 | `TF_STATE_RESOURCE_GROUP` | Repository variable | IaC defaults — set once, shared across all environments |
+| 2 | `TF_STATE_STORAGE_ACCOUNT` | Repository variable | IaC defaults — set once, shared across all environments |
+| 3 | `TF_STATE_CONTAINER` | Repository variable | IaC defaults — set once, shared across all environments |
+| 4 | `TF_STATE_SAS_TOKEN` | Repository secret | IaC defaults — set once, shared across all environments |
+| 5 | `CF_API_TOKEN` | Environment secret | Only written when `cf_api_token` is actually typed into the dispatch UI that run. If left blank, onboard falls back to the pre-stored `CF_API_TOKEN` repo secret *without* copying it down to the environment — `iac-cf-create.yml`/`iac-cf-destroy.yml` fall back to that same repo secret themselves at apply time (skipped entirely if no `platform: cloudflare` application) |
+| 6 | Any keys in `extra_variables` | Environment variable | `extra_variables` from config (root + per-env deep-merged) — read by other workflows (e.g. the app's own build pipeline), not Terraform |
+| 7 | Any names in `extra_secret_vars` | Environment secret | One placeholder secret (`REPLACE_ME_<NAME>`) created per name — skipped if a secret with that name already exists at repo or environment level. Fill in the real value afterward; see [§ Extra pipeline secrets](#extra-pipeline-secrets-extra_secret_vars) |
+
+`WORKER_SECRETS` is **not** in this table because onboarding never touches it — developers set that one JSON-object secret directly (`gh secret set WORKER_SECRETS --env <env> --body '{...}'`) whenever a worker needs a new or rotated secret, with no onboarding re-run required. See [§ Worker secrets](#worker-secrets-secret_vars).
 
 The Terraform state blob key (`streakjs-clients/<project_name>/<environment>.terraform.tfstate`) comes straight from `iac-config.json`'s `project_name` field at apply time — there's no `TF_STATE_PROJECT` GitHub variable.
 
-`cloudflare.account_id`, the `applications[]` reshaped into `CF_WORKERS`/`CF_PAGES_PROJECTS`, and the rest of `cloudflare.*` (r2_bucket_location, worker_compatibility_date, manage_zone_resources, security_contact, dmarc_policy, dmarc_rua) are all resolved fresh from `iac-config.json` by `iac-cf-create.yml`/`iac-cf-destroy.yml` themselves — see [§ Config field reference](#config-field-reference) for the JSON shape. Before applying, these workflows also fail loudly if a worker's `secret_vars` references a secret that resolves empty, instead of letting Terraform silently overwrite a real value already deployed to Cloudflare with a blank one.
+`cloudflare.account_id`, the `applications[]` reshaped into `CF_WORKERS`/`CF_PAGES_PROJECTS`, and the rest of `cloudflare.*` (r2_bucket_location, worker_compatibility_date, manage_zone_resources, security_contact, dmarc_policy, dmarc_rua) are all resolved fresh from `iac-config.json` by `iac-cf-create.yml`/`iac-cf-destroy.yml` themselves — see [§ Config field reference](#config-field-reference) for the JSON shape.
 
 ---
 
@@ -342,6 +364,6 @@ The Terraform state blob key (`streakjs-clients/<project_name>/<environment>.ter
 | `403` on Terraform backend | `TF_STATE_SAS_TOKEN` expired or has insufficient permissions (needs List + Read + Write + Delete) |
 | Pages created unexpectedly | An `applications` entry with `type: pages` is set in config when it should not be — remove it for that environment |
 | `Authentication error (10000)` on Cloudflare | `CF_API_TOKEN` missing a permission — verify against the [full permission list](#cloudflare-api-token) |
-| Worker(s) reference secret_vars with no value set | A worker's `secret_vars` lists a key (e.g. `RESEND_API_KEY`) that has no corresponding GitHub Environment secret set — set it via onboard or `gh secret set` before re-running |
+| Worker(s) reference secret_vars with no value set | A worker's `secret_vars` lists a key (e.g. `RESEND_API_KEY`) that's missing or empty in the `WORKER_SECRETS` GitHub Environment secret — `gh secret set WORKER_SECRETS --env <env> --body '{...}'` with that key included before re-running |
 | Create/Destroy uses stale config | Not possible — `CF_WORKERS`, `CF_PAGES_PROJECTS`, `cloudflare.*`, and `project_name` are read straight from `iac-config.json` on every run, no re-onboard needed after editing the file |
 | Onboard fails with "Unsupported platform" | An `applications` entry has `"platform"` set to something other than `"cloudflare"` — only `cloudflare` is currently provisioned |

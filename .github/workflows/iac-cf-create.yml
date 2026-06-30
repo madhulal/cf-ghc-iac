@@ -24,7 +24,7 @@ jobs:
     defaults:
       run:
         # update working directory to the IAC
-        working-directory: infra/iac/cloudflare/environments/common
+        working-directory: infra/iac/cloudflare
 
     env:
       TF_IN_AUTOMATION: "true"
@@ -71,34 +71,31 @@ jobs:
           chmod +x infra/iac/cloudflare/scripts/read-iac-config.sh
           infra/iac/cloudflare/scripts/read-iac-config.sh
 
-      # Fixed, known-name worker secrets (see iac-cf-onboard.yml) assembled into the single map
-      # Terraform's var.worker_secrets expects — built with jq (not string interpolation) so a
-      # secret value containing a quote or backslash can never produce malformed JSON. Empty
-      # string for any secret not stored on this repo; harmless since no worker is forced to use it.
-      - name: Build worker secrets map
-        # Default working-directory is infra/iac/cloudflare/environments/common, which doesn't
+      # WORKER_SECRETS is one GitHub secret holding a JSON object of arbitrary name -> value pairs
+      # (e.g. {"GOOGLE_SCRIPT_URL":"...","MY_CUSTOM_KEY":"..."}) — developers add or rotate a
+      # worker secret by setting this one secret themselves (`gh secret set WORKER_SECRETS --env
+      # <env> --body '{...}'` or via the GitHub UI), no change to this repo ever required. A
+      # worker opts into a key by listing its name in its application's secret_vars in
+      # iac-config.json; any name is accepted there, nothing is validated against an allowlist.
+      - name: Read worker secrets
+        # Default working-directory is infra/iac/cloudflare, which doesn't
         # exist until "Checkout IaC repo" runs above — this step touches no files, so run it from repo root.
         working-directory: .
         env:
-          GOOGLE_SCRIPT_URL: ${{ secrets.GOOGLE_SCRIPT_URL }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}
+          WORKER_SECRETS: ${{ secrets.WORKER_SECRETS }}
         run: |
-          WORKER_SECRETS=$(jq -n -c \
-            --arg google_script_url "$GOOGLE_SCRIPT_URL" \
-            --arg resend_api_key "$RESEND_API_KEY" \
-            --arg email_api_key "$EMAIL_API_KEY" \
-            '{GOOGLE_SCRIPT_URL: $google_script_url, RESEND_API_KEY: $resend_api_key, EMAIL_API_KEY: $email_api_key}')
-          echo "TF_VAR_worker_secrets=$WORKER_SECRETS" >> "$GITHUB_ENV"
+          [[ -z "$WORKER_SECRETS" ]] && WORKER_SECRETS="{}"
+          echo "$WORKER_SECRETS" | jq empty || { echo "❌ WORKER_SECRETS secret is not valid JSON"; exit 1; }
+          echo "TF_VAR_worker_secrets=$(echo "$WORKER_SECRETS" | jq -c .)" >> "$GITHUB_ENV"
 
           # Guard against silently blanking a secret already deployed to Cloudflare: if a worker's
-          # secret_vars names a key that resolves empty here, fail loudly instead of letting
-          # Terraform push an empty string over whatever value is live.
+          # secret_vars names a key that's missing or empty in WORKER_SECRETS, fail loudly instead
+          # of letting Terraform push an empty string over whatever value is live.
           MISSING_SECRETS=$(echo "$CF_WORKERS" | jq -r --argjson secrets "$WORKER_SECRETS" \
             '[.[] | .name as $w | (.secret_vars // [])[] | select(($secrets[.] // "") == "") | "\($w): \(.)"] | join(", ")')
           if [[ -n "$MISSING_SECRETS" ]]; then
-            echo "❌ Worker(s) reference secret_vars with no value set: $MISSING_SECRETS"
-            echo "   Set the corresponding repository/environment secret before running this workflow."
+            echo "❌ Worker(s) reference secret_vars with no value set in the WORKER_SECRETS secret: $MISSING_SECRETS"
+            echo "   Set: gh secret set WORKER_SECRETS --env ${{ github.event.inputs.environment }} --body '{\"NAME\":\"value\",...}'"
             exit 1
           fi
 

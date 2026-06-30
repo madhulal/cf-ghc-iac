@@ -110,12 +110,10 @@ jobs:
           ENV_NAME: ${{ github.event.inputs.environment }}
           CF_API_TOKEN: ${{ env.CF_API_TOKEN_RESOLVED }}
           CF_API_TOKEN_FROM_INPUT: ${{ env.CF_API_TOKEN_FROM_INPUT }}
-          # Worker secrets are pre-stored repository secrets only (no dispatch input) — keeps the
-          # onboard dispatch form free of fields most projects never use. Set once via
-          # `gh secret set GOOGLE_SCRIPT_URL ...` etc. before onboarding, if a worker needs them.
-          GOOGLE_SCRIPT_URL: ${{ secrets.GOOGLE_SCRIPT_URL }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}
+          # Worker secrets (WORKER_SECRETS) are NOT handled by onboarding at all — developers set
+          # that one GitHub secret directly (`gh secret set WORKER_SECRETS --env <env> --body
+          # '{...}'`) whenever they need to add/rotate a worker secret, with no onboarding re-run
+          # required. See iac-cf-create.yml/iac-cf-destroy.yml "Read worker secrets".
           # All remaining vars (including EXTRA_VARIABLES) are populated from the config file via GITHUB_ENV
         run: |
           chmod +x infra/iac/cloudflare/scripts/onboard-client.sh
