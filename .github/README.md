@@ -317,7 +317,7 @@ Most Cloudflare configuration (account ID, workers, Pages projects, R2/zone/DMAR
 | `TF_STATE_STORAGE_ACCOUNT` | Repository variable | IaC defaults — set once, shared across all environments |
 | `TF_STATE_CONTAINER` | Repository variable | IaC defaults — set once, shared across all environments |
 | `TF_STATE_SAS_TOKEN` | Repository secret | IaC defaults — set once, shared across all environments |
-| `CF_API_TOKEN` | Environment secret | `cf_api_token` dispatch input or pre-stored `CF_API_TOKEN` repo secret (skipped if no `platform: cloudflare` application) |
+| `CF_API_TOKEN` | Environment secret | Only written when `cf_api_token` is actually typed into the dispatch UI that run. If left blank, onboard falls back to the pre-stored `CF_API_TOKEN` repo secret *without* copying it down to the environment — `iac-cf-create.yml`/`iac-cf-destroy.yml` fall back to that same repo secret themselves at apply time (skipped entirely if no `platform: cloudflare` application) |
 | `GOOGLE_SCRIPT_URL` | Environment secret | Pre-stored repo secret only, no dispatch input (skipped if no worker declares it in `secret_vars`) |
 | `RESEND_API_KEY` | Environment secret | Pre-stored repo secret only, no dispatch input (skipped if no worker declares it in `secret_vars`) |
 | `EMAIL_API_KEY` | Environment secret | Pre-stored repo secret only, no dispatch input (skipped if no worker declares it in `secret_vars`) |

@@ -75,6 +75,13 @@ jobs:
       # Only required if this environment has a 'platform: cloudflare' application (HAS_CLOUDFLARE_APP,
       # set by "Read IAC config file" above) — an all-Netlify/all-AWS environment never needs a
       # Cloudflare token at all, and isn't asked for one.
+      #
+      # CF_API_TOKEN_FROM_INPUT tracks whether the token actually came from the dispatch UI this run,
+      # as opposed to the pre-stored repository secret fallback — onboard-client.sh only writes an
+      # environment-scoped CF_API_TOKEN secret when it's true, so a plain re-run never silently copies
+      # the repo-level secret down into every environment. The repo-level secret still works as the
+      # fallback at apply time: iac-cf-create.yml/iac-cf-destroy.yml read secrets.CF_API_TOKEN scoped to
+      # the environment, and GitHub falls back to the repository secret when no environment one exists.
       - name: Resolve Cloudflare token
         env:
           INPUT_CF_API_TOKEN:  ${{ github.event.inputs.cf_api_token }}
@@ -82,11 +89,15 @@ jobs:
         run: |
           if [[ "$HAS_CLOUDFLARE_APP" != "true" ]]; then
             echo "CF_API_TOKEN_RESOLVED=" >> "$GITHUB_ENV"
+            echo "CF_API_TOKEN_FROM_INPUT=false" >> "$GITHUB_ENV"
             echo "ℹ️  No 'platform: cloudflare' application in this environment — skipping Cloudflare token"
           elif [[ -n "$INPUT_CF_API_TOKEN" ]]; then
             echo "CF_API_TOKEN_RESOLVED=$INPUT_CF_API_TOKEN" >> "$GITHUB_ENV"
+            echo "CF_API_TOKEN_FROM_INPUT=true" >> "$GITHUB_ENV"
           elif [[ -n "$SECRET_CF_API_TOKEN" ]]; then
             echo "CF_API_TOKEN_RESOLVED=$SECRET_CF_API_TOKEN" >> "$GITHUB_ENV"
+            echo "CF_API_TOKEN_FROM_INPUT=false" >> "$GITHUB_ENV"
+            echo "ℹ️  Using the pre-stored CF_API_TOKEN repository secret — not writing an environment-scoped copy"
           else
             echo "❌ cf_api_token is required: provide it as a dispatch input or pre-store it as the CF_API_TOKEN repository secret"
             exit 1
@@ -98,6 +109,7 @@ jobs:
           REPO: ${{ github.repository }}
           ENV_NAME: ${{ github.event.inputs.environment }}
           CF_API_TOKEN: ${{ env.CF_API_TOKEN_RESOLVED }}
+          CF_API_TOKEN_FROM_INPUT: ${{ env.CF_API_TOKEN_FROM_INPUT }}
           # Worker secrets are pre-stored repository secrets only (no dispatch input) — keeps the
           # onboard dispatch form free of fields most projects never use. Set once via
           # `gh secret set GOOGLE_SCRIPT_URL ...` etc. before onboarding, if a worker needs them.
